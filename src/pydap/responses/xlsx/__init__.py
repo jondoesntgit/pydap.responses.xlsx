@@ -1,16 +1,17 @@
-from StringIO import StringIO
+from io import StringIO
+from io import BytesIO
 
-from xlwt import Workbook, easyxf
+import pandas as pd
+#from xlwt import Workbook, easyxf
 
 from pydap.model import *
 from pydap.lib import walk
 from pydap.responses.lib import BaseResponse
+import tempfile
+from functools import singledispatch
+from openpyxl import Workbook
 
-
-HEADER = easyxf('font: color black; align: wrap on, horiz center, vert centre; pattern: pattern solid, fore-colour ice_blue')
-
-
-class XLSResponse(BaseResponse):
+class ExcelResponse(BaseResponse):
 
     __description__ = "Excel spreadsheet"
 
@@ -20,10 +21,60 @@ class XLSResponse(BaseResponse):
                 ('Content-description', 'dods_xls'),
                 ('Content-type', 'application/vnd.ms-excel'),
                 ])
+    
+    def __iter__(self):
+        dataset = self.dataset
+        #buf = StringIO()
+        buf = BytesIO()
+        wb = Workbook()
+        #ws = wb.create_sheet('Global attributes')
+        #write_metadata(ws, self.dataset, 0, 0)
+
+        for seq in walk(dataset, SequenceType):
+            ws = wb.create_sheet(seq.id)
+
+            # add header 
+#            for j, var_ in enumerate(seq.keys()):
+#                ws.write(0, j, var_)
+
+            # add data
+            for i, row in enumerate(seq.data):
+                #for j, value in enumerate(seq.data):
+                    #for j, value in enumerate(row):
+                        ws.append([value for value in row])
+                        #ws.write(i+1, j, value)
+
+            # add var metadata
+            #n = 0
+            #j = len(seq.keys())+1
+            #for child in seq.walk():
+                #ws.write_merge(n, n, j, j+1, child.name, HEADER)
+#                ws.write(n, n, j, j+1, child.name, HEADER)
+#                n = write_metadata(ws, child, n+1, j)+1
+            #    pass
+        wb.save(buf)
+        print(buf)
+        yield buf.getvalue()
+        return [ buf.getvalue() ]
+
+
+#        df = pd.DataFrame({'foo':[1,2,3,4], 'bar':[54,32,91, 57]})
+#        temp_file = tempfile.NamedTempFile()
+#        df.to_excel(temp_file)
+
+        wb.save(buf)
+        return [ buf.getvalue() ]
+
+        with open(temp_file, 'rb') as f: 
+            yield f.read()
 
     @staticmethod
     def serialize(dataset):
         buf = StringIO()
+        df = pd.DataFrame({'foo':[1,2,3,4], 'bar':[54,32,91, 57]})
+        df.to_xslx(buf)
+        return [ buf.getvalue()]
+
         wb = Workbook()
 
         # dataset metadata
@@ -65,7 +116,8 @@ def write_metadata(ws, var, i, j):
 def write_attr(ws, k, v, i, j):
     if isinstance(v, dict):
         n = height(v)
-        ws.write_merge(i, i+n-1, j, j, '%s:' % k, HEADER)
+        ws.write(i, i+n-1, j, j, '%s:' % k, HEADER)
+#        ws.write_merge(i, i+n-1, j, j, '%s:' % k, HEADER)
         ws.col(j).width = max(ws.col(j).width, (len(k)+1)*350)
         for kk, vv in v.items():
             n = height(vv)
@@ -84,9 +136,3 @@ def height(v):
         return sum( height(o) for o in v.items() )
     else:
         return 1
-                    
-
-def save(dataset, filename):
-    f = open(filename, 'w')
-    f.write(XLSResponse(dataset).serialize(dataset)[0])
-    f.close()
